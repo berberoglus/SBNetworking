@@ -129,7 +129,6 @@ public final class HTTPClient: HttpClientProtocol {
         }
 
         guard let url = components.url else {
-            print("[HTTPClient] Tried to create an invalid URL: \(components)")
             throw HTTPClientError.invalidURL
         }
         var request = URLRequest(url: url)
@@ -141,11 +140,9 @@ public final class HTTPClient: HttpClientProtocol {
             do {
                 request.httpBody = try JSONEncoder().encode(body)
             } catch {
-                print("[HTTPClient] Failed to encode payload: \(error)")
                 throw HTTPClientError.decodingFailed
             }
         }
-        print("[HTTPClient] Request created: \(request)")
         return request
     }
 
