@@ -29,10 +29,12 @@ import Foundation
 public protocol HttpClientProtocol {
     var urlSession: URLSession { get }
     var environment: HTTPClientEnvironment { get }
+    var authTokenProvider: AuthTokenProvider? { get }
 }
 
 public extension HttpClientProtocol {
     var urlSession: URLSession { URLSession.shared }
+    var authTokenProvider: AuthTokenProvider? { nil }
 }
 
 /// Client used to send network requests.
@@ -68,10 +70,12 @@ public final class HTTPClient: HttpClientProtocol {
 
     public let urlSession: URLSession
     public let environment: HTTPClientEnvironment
+    public let authTokenProvider: AuthTokenProvider?
 
     public init(client: HttpClientProtocol) {
         self.urlSession = client.urlSession
         self.environment = client.environment
+        self.authTokenProvider = client.authTokenProvider
     }
 
     /// Sends a request to the specified endpoint and returns the decoded response.
@@ -94,6 +98,19 @@ public final class HTTPClient: HttpClientProtocol {
 
         do {
             let (data, response) = try await urlSession.data(for: request)
+
+            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 401,
+               let provider = authTokenProvider {
+                try await provider.refresh()
+                let newRequest = try createDefaultRequest(for: endpoint)
+                let (newData, newResponse) = try await urlSession.data(for: newRequest)
+                return try validateResponse(
+                    newResponse,
+                    request: newRequest,
+                    data: newData,
+                    responseType: T.ResponseType.self
+                )
+            }
 
             return try validateResponse(
                 response,
@@ -133,7 +150,12 @@ public final class HTTPClient: HttpClientProtocol {
         }
         var request = URLRequest(url: url)
         request.httpMethod = endpoint.method.rawValue
-        request.allHTTPHeaderFields = endpoint.headerFields
+        var allHeaders = endpoint.headerFields ?? [:]
+        if let provider = authTokenProvider {
+            if let key = provider.apiKey { allHeaders["apikey"] = key }
+            if let token = provider.accessToken { allHeaders["Authorization"] = "Bearer \(token)" }
+        }
+        request.allHTTPHeaderFields = allHeaders.isEmpty ? nil : allHeaders
         request.timeoutInterval = endpoint.timeoutInterval
 
         if let body = endpoint.payload {

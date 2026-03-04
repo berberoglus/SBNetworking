@@ -12,6 +12,7 @@ A lightweight, type-safe, and Swift-native HTTP networking library designed for 
 - ✅ Type-safe request and response handling
 - ✅ Comprehensive error handling
 - ✅ Async/await support
+- ✅ Auth token provider with automatic 401 retry and refresh
 - ✅ Easily testable with built-in mocking capabilities
 - ✅ Minimal dependencies (only Foundation)
 - ✅ Customizable environment configurations
@@ -125,6 +126,46 @@ do {
 ```
 
 ## Advanced Usage
+
+### Authentication & Token Refresh
+
+SBNetworking supports automatic auth header injection and 401 retry via the `AuthTokenProvider` protocol. When you provide an `AuthTokenProvider` to your `HttpClientProtocol` implementation, the client will:
+
+- Add the `apikey` header from `apiKey` (for Supabase compatibility)
+- Add `Authorization: Bearer {accessToken}` when present
+- On 401 responses: call your `refresh()` method, then retry the request once
+
+Override `refresh()` to enable 401 retry. The default implementation throws `HTTPClientError.unauthorized`.
+
+```swift
+// 1. Implement AuthTokenProvider (e.g. backed by Keychain)
+final class KeychainTokenProvider: AuthTokenProvider {
+    var accessToken: String? { /* read from Keychain */ }
+    var refreshToken: String? { /* read from Keychain */ }
+    var apiKey: String? { "your-supabase-anon-key" }
+    func updateTokens(accessToken: String, refreshToken: String) {
+        // Persist to Keychain
+    }
+    func refresh() async throws {
+        // Call your auth refresh API, then:
+        let newTokens = try await authClient.refresh()
+        updateTokens(accessToken: newTokens.accessToken, refreshToken: newTokens.refreshToken)
+    }
+}
+
+// 2. Inject via HttpClientProtocol
+struct MyHttpClient: HttpClientProtocol {
+    var urlSession = URLSession.shared
+    var environment = HTTPClientEnvironment(baseURL: "your-api.com")
+    var authTokenProvider: AuthTokenProvider? = KeychainTokenProvider()
+}
+
+// 3. Use as usual – auth headers and 401 retry are handled automatically
+let client = HTTPClient(client: MyHttpClient())
+let data = try await client.submitRequest(endpoint: ProtectedEndpoint())
+```
+
+Without `authTokenProvider` (or when `refresh()` throws by default), 401 responses throw `HTTPClientError.unauthorized` as before. The feature is fully backward compatible.
 
 ### Custom Headers
 
