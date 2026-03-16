@@ -133,6 +133,25 @@ public final class HTTPClient: HttpClientProtocol {
         }
     }
     
+    /// Sends a request built from a feature-level request model and returns the decoded response.
+    ///
+    /// This is a convenience overload that allows higher layers to work with typed request objects
+    /// instead of constructing endpoints directly.
+    ///
+    /// The method simply converts the given request into its concrete endpoint representation
+    /// using `toEndpoint()`, then forwards execution to the existing
+    /// `submitRequest(endpoint:)` implementation.
+    ///
+    /// - Parameter request: A typed request model conforming to `RequestProtocol`
+    /// - Returns: The decoded response object of the request's endpoint `ResponseType`
+    /// - Throws: Any error thrown by endpoint construction or the underlying `submitRequest(endpoint:)`
+    @discardableResult
+    public func submitRequest<R: RequestProtocol>(
+        request: R
+    ) async throws -> R.EndpointType.ResponseType? {
+        try await submitRequest(endpoint: request.toEndpoint())
+    }
+    
     func createDefaultRequest<T: Endpoint>(
         for endpoint: T
     ) throws -> URLRequest {

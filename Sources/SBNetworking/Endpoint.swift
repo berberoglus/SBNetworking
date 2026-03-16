@@ -28,7 +28,7 @@ import Foundation
 /// ```
 
 public protocol Endpoint {
-    associatedtype ResponseType: Decodable
+    associatedtype ResponseType: ResponseProtocol
     var path: String { get }
     var method: HTTPMethod { get }
     var headerFields: [String: String]? { get }

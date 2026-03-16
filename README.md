@@ -16,6 +16,8 @@ A lightweight, type-safe, and Swift-native HTTP networking library designed for 
 - ✅ Easily testable with built-in mocking capabilities
 - ✅ Minimal dependencies (only Foundation)
 - ✅ Customizable environment configurations
+- ✅ Typed request-to-endpoint conversion with `RequestProtocol`
+- ✅ DTO-to-model conversion support via `ResponseProtocol`
 
 ## Installation
 
@@ -47,19 +49,41 @@ let environment = HTTPClientEnvironment(baseURL: "api.example.com")
 let client = HTTPClient(client: HttpClientProtocolImpl(environment: environment))
 ```
 
-### 2. Create an Endpoint
+### 2. Create a Request and Endpoint
 
 ```swift
-struct UserEndpoint: Endpoint {
-    typealias ResponseType = User
-    
+struct UserRequest: RequestProtocol {
+    typealias EndpointType = UserEndpoint
+
     let userId: String
-    
+
+    func toEndpoint() -> UserEndpoint {
+        UserEndpoint(userId: userId)
+    }
+}
+
+struct UserEndpoint: Endpoint {
+    typealias ResponseType = UserResponseDTO
+
+    let userId: String
+
     var path: String { "/users/\(userId)" }
     var method: HTTPMethod { .get }
 }
 
-struct User: Decodable {
+struct UserResponseDTO: ResponseProtocol {
+    typealias ModelType = User
+
+    let id: String
+    let name: String
+    let email: String
+
+    func toModel() -> User {
+        User(id: id, name: name, email: email)
+    }
+}
+
+struct User {
     let id: String
     let name: String
     let email: String
@@ -70,7 +94,9 @@ struct User: Decodable {
 
 ```swift
 do {
-    let user = try await client.submitRequest(endpoint: UserEndpoint(userId: "123"))
+    let response = try await client.submitRequest(request: UserRequest(userId: "123"))
+    let user = response?.toModel()
+
     print("User: \(user?.name ?? "Unknown")")
 } catch let error as HTTPClientError {
     print("Error: \(error)")
@@ -87,7 +113,7 @@ The `Endpoint` protocol is the central abstraction for defining network requests
 
 ```swift
 public protocol Endpoint {
-    associatedtype ResponseType: Decodable
+    associatedtype ResponseType: ResponseProtocol
     var path: String { get }
     var method: HTTPMethod { get }
     var headerFields: [String: String]? { get }
@@ -103,8 +129,36 @@ public protocol Endpoint {
 
 ```swift
 let client = HTTPClient(client: HttpClientProtocolImpl(environment: environment))
-let response = try await client.submitRequest(endpoint: MyEndpoint())
+
+// Endpoint-based usage
+let endpointResponse = try await client.submitRequest(endpoint: MyEndpoint())
+
+// Request-based usage
+let requestResponse = try await client.submitRequest(request: MyRequest())
 ```
+
+### Request and Response Protocols
+
+SBNetworking also supports a request-first flow using typed request and response abstractions:
+
+```swift
+public protocol EndpointConvertible {
+    associatedtype EndpointType: Endpoint
+    func toEndpoint() -> EndpointType
+}
+
+public protocol RequestProtocol: EndpointConvertible, Encodable, Sendable { }
+
+public protocol ModelConvertible {
+    associatedtype ModelType
+    func toModel() -> ModelType
+}
+
+public protocol ResponseProtocol: Decodable, ModelConvertible, Sendable { }
+```
+
+This allows higher layers to create typed request objects, convert them into endpoints,
+and decode transport DTOs that can be transformed into higher-level models.
 
 ### Error Handling
 
@@ -171,32 +225,72 @@ Without `authTokenProvider` (or when `refresh()` throws by default), 401 respons
 
 ```swift
 struct AuthenticatedEndpoint: Endpoint {
-    typealias ResponseType = AuthResponse
-    
+    typealias ResponseType = AuthResponseDTO
+
     let token: String
-    
+
     var path: String { "/secure-resource" }
     var method: HTTPMethod { .get }
     var headerFields: [String: String]? {
         ["Authorization": "Bearer \(token)"]
     }
 }
+
+struct AuthResponseDTO: ResponseProtocol {
+    typealias ModelType = AuthResponse
+
+    let token: String
+
+    func toModel() -> AuthResponse {
+        AuthResponse(token: token)
+    }
+}
+
+struct AuthResponse {
+    let token: String
+}
 ```
 
 ### Request with Body
 
 ```swift
-struct CreatePostEndpoint: Endpoint {
-    typealias ResponseType = Post
-    
-    let postData: PostRequest
-    
-    var path: String { "/posts" }
-    var method: HTTPMethod { .post }
-    var payload: Encodable? { postData }
+struct CreatePostRequest: RequestProtocol {
+    typealias EndpointType = CreatePostEndpoint
+
+    let title: String
+    let body: String
+    let userId: Int
+
+    func toEndpoint() -> CreatePostEndpoint {
+        CreatePostEndpoint(request: self)
+    }
 }
 
-struct PostRequest: Encodable {
+struct CreatePostEndpoint: Endpoint {
+    typealias ResponseType = PostResponseDTO
+
+    let request: CreatePostRequest
+
+    var path: String { "/posts" }
+    var method: HTTPMethod { .post }
+    var payload: Encodable? { request }
+}
+
+struct PostResponseDTO: ResponseProtocol {
+    typealias ModelType = Post
+
+    let id: Int
+    let title: String
+    let body: String
+    let userId: Int
+
+    func toModel() -> Post {
+        Post(id: id, title: title, body: body, userId: userId)
+    }
+}
+
+struct Post {
+    let id: Int
     let title: String
     let body: String
     let userId: Int
@@ -206,16 +300,26 @@ struct PostRequest: Encodable {
 ### Query Parameters
 
 ```swift
-struct SearchEndpoint: Endpoint {
-    typealias ResponseType = SearchResults
-    
+struct SearchRequest: RequestProtocol {
+    typealias EndpointType = SearchEndpoint
+
     let term: String
     let page: Int
-    
+
+    func toEndpoint() -> SearchEndpoint {
+        SearchEndpoint(request: self)
+    }
+}
+
+struct SearchEndpoint: Endpoint {
+    typealias ResponseType = SearchResultsDTO
+
+    let request: SearchRequest
+
     var path: String { "/search" }
     var method: HTTPMethod { .get }
     var queryParameters: [String: String]? {
-        ["q": term, "page": "\(page)"]
+        ["q": request.term, "page": "\(request.page)"]
     }
 }
 ```
@@ -225,13 +329,29 @@ struct SearchEndpoint: Endpoint {
 SBNetworking is designed with testability in mind. The library includes a `MockUrlProtocol` to make testing network code straightforward:
 
 ```swift
+struct MyResponseDTO: ResponseProtocol {
+    typealias ModelType = MyModel
+
+    let id: String
+    let name: String
+
+    func toModel() -> MyModel {
+        MyModel(id: id, name: name)
+    }
+}
+
+struct MyModel {
+    let id: String
+    let name: String
+}
+
 // Setup test environment
 let config = URLSessionConfiguration.ephemeral
 config.protocolClasses = [MockUrlProtocol.self]
 let session = URLSession(configuration: config)
 
 // Register mock response
-let mockResponse = MyResponseModel(id: "123", name: "Test")
+let mockResponse = MyResponseDTO(id: "123", name: "Test")
 let mockData = try JSONEncoder().encode(mockResponse)
 let url = URL(string: "https://api.example.com/resource")!
 MockUrlProtocol.testSamples[url] = mockData
@@ -253,7 +373,7 @@ Here's an example implementation of `MockHttpClient` for testing:
 struct MockHttpClient: HttpClientProtocol {
     let urlSession: URLSession
     let environment: HTTPClientEnvironment
-    
+
     init(urlSession: URLSession, environment: HTTPClientEnvironment) {
         self.urlSession = urlSession
         self.environment = environment
@@ -264,38 +384,37 @@ struct MockHttpClient: HttpClientProtocol {
 class NetworkTests: XCTestCase {
     var mockSession: URLSession!
     var client: HTTPClient!
-    
+
     override func setUp() {
         super.setUp()
-        
+
         // Create mock session with MockUrlProtocol
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockUrlProtocol.self]
         mockSession = URLSession(configuration: config)
-        
+
         // Create environment and client
         let environment = HTTPClientEnvironment(baseURL: "api.example.com")
         let mockHttpClient = MockHttpClient(urlSession: mockSession, environment: environment)
         client = HTTPClient(client: mockHttpClient)
     }
-    
+
     func testUserEndpoint() async throws {
         // Prepare mock data
-        let mockUser = User(id: "123", name: "John Doe", email: "john@example.com")
+        let mockUser = MyResponseDTO(id: "123", name: "John Doe")
         let mockData = try JSONEncoder().encode(mockUser)
-        
+
         // Register the mock response
         let url = URL(string: "https://api.example.com/users/123")!
         MockUrlProtocol.testSamples[url] = mockData
-        
+
         // Make the request
         let endpoint = UserEndpoint(userId: "123")
         let response = try await client.submitRequest(endpoint: endpoint)
-        
+
         // Verify the response
         XCTAssertEqual(response?.id, "123")
         XCTAssertEqual(response?.name, "John Doe")
-        XCTAssertEqual(response?.email, "john@example.com")
     }
 }
 ```
@@ -308,4 +427,4 @@ class NetworkTests: XCTestCase {
 
 ## License
 
-SBNetworking is available under the MIT license. See the LICENSE file for more info. 
+SBNetworking is available under the MIT license. See the LICENSE file for more info.

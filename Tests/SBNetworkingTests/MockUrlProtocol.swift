@@ -92,7 +92,11 @@ final class MockUrlProtocol: URLProtocol {
                 statusCode = 200
                 data = fallback
             } else {
-                throw NSError(domain: "MockUrlProtocol", code: -1, userInfo: [NSLocalizedDescriptionKey: "No test data found for URL: \(url.absoluteString)"])
+                throw NSError(
+                    domain: "MockUrlProtocol",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "No test data found for URL: \(url.absoluteString)"]
+                )
             }
 
             let response = try #require(

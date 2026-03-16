@@ -264,9 +264,12 @@ struct ITunesSearchEndpoint: Endpoint {
     var queryParameters: [String: String]? { Self.queryParams }
 }
 
-struct ITunesSearchResponseModel: Codable, Equatable {
+struct ITunesSearchResponseModel: ResponseProtocol, Equatable {
+    typealias ModelType = ITunesSearchResponseModel
+    
     let resultCount: Int
     let results: [ITunesEntityTestModel]
+    func toModel() -> ITunesSearchResponseModel { self }
 }
 
 struct ITunesEntityTestModel: Codable, Equatable {
@@ -282,8 +285,12 @@ struct ITunesEntityTestModel: Codable, Equatable {
     let description: String?
 }
 
-struct DummyResponse: Decodable {
+struct DummyResponse: ResponseProtocol {
+    typealias ModelType = DummyResponse
+    
     let resultCount: Int
+    
+    func toModel() -> DummyResponse { self }
 }
 
 struct DummyPayload: Codable, Equatable {
