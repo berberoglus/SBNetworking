@@ -66,7 +66,7 @@ public extension HttpClientProtocol {
 ///
 /// ```
 
-public final class HTTPClient: HttpClientProtocol {
+public final class HTTPClient: HttpClientProtocol, Sendable {
 
     public let urlSession: URLSession
     public let environment: HTTPClientEnvironment
@@ -155,14 +155,7 @@ public final class HTTPClient: HttpClientProtocol {
     func createDefaultRequest<T: Endpoint>(
         for endpoint: T
     ) throws -> URLRequest {
-        var components = URLComponents()
-        components.scheme = environment.scheme
-        components.host = environment.baseURL
-        components.path = endpoint.path
-        
-        if let parameters = endpoint.queryParameters, !parameters.isEmpty {
-            components.queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
-        }
+        let components = try urlComponents(for: endpoint)
 
         guard let url = components.url else {
             throw HTTPClientError.invalidURL
@@ -174,6 +167,9 @@ public final class HTTPClient: HttpClientProtocol {
             if let key = provider.apiKey { allHeaders["apikey"] = key }
             if let token = provider.accessToken { allHeaders["Authorization"] = "Bearer \(token)" }
         }
+        if endpoint.payload != nil, allHeaders["Content-Type"] == nil {
+            allHeaders["Content-Type"] = "application/json"
+        }
         request.allHTTPHeaderFields = allHeaders.isEmpty ? nil : allHeaders
         request.timeoutInterval = endpoint.timeoutInterval
 
@@ -184,7 +180,31 @@ public final class HTTPClient: HttpClientProtocol {
                 throw HTTPClientError.decodingFailed
             }
         }
+
+        logRequest(request)
         return request
+    }
+
+    /// Builds `URLComponents` from `environment` and `endpoint`.
+    ///
+    /// `baseURL` may be a hostname (e.g. `api.example.com`) or host with port (`127.0.0.1:54321`).
+    /// Port must not be embedded in `URLComponents.host`; parsing via `scheme://\(baseURL)` splits correctly.
+    private func urlComponents<T: Endpoint>(for endpoint: T) throws -> URLComponents {
+        guard let parsed = URLComponents(string: "\(environment.scheme)://\(environment.baseURL)") else {
+            throw HTTPClientError.invalidURL
+        }
+        guard parsed.host != nil else {
+            throw HTTPClientError.invalidURL
+        }
+        var components = URLComponents()
+        components.scheme = environment.scheme
+        components.host = parsed.host
+        components.port = parsed.port
+        components.path = endpoint.path
+        if let parameters = endpoint.queryParameters, !parameters.isEmpty {
+            components.queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        return components
     }
 
     func validateResponse<T: Decodable>(
@@ -218,6 +238,8 @@ public final class HTTPClient: HttpClientProtocol {
         default:
             error = HTTPClientError.unexpectedStatusCode
         }
+
+        logResponse(response, requestMethod: request.httpMethod, data: data)
         throw error
     }
 
@@ -228,13 +250,23 @@ public final class HTTPClient: HttpClientProtocol {
         responseType: T.Type
     ) throws -> T? {
         if response.statusCode == 204 {
+            logResponse(response, requestMethod: request.httpMethod, data: data)
             return nil
+        }
+
+        if responseType is Data.Type {
+            logResponse(response, requestMethod: request.httpMethod, data: data)
+            return data as? T
         }
 
         do {
             let decodedResponse = try JSONDecoder().decode(responseType.self, from: data)
+            logResponse(response, requestMethod: request.httpMethod, data: data)
             return decodedResponse
-        } catch {
+        } catch let error {
+            logCouldNotDecodeResponse(responseType.self)
+            logResponse(response, requestMethod: request.httpMethod, data: data)
+            logResponse(response, requestMethod: request.httpMethod, error: error)
             throw HTTPClientError.decodingFailed
         }
     }

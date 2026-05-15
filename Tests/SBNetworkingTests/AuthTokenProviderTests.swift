@@ -166,7 +166,7 @@ private struct AuthTestClientConfig: HttpClientProtocol {
     }
 }
 
-private final class MockAuthTokenProvider: AuthTokenProvider {
+private final class MockAuthTokenProvider: AuthTokenProvider, @unchecked Sendable {
     var accessToken: String?
     var refreshToken: String?
     var apiKey: String?

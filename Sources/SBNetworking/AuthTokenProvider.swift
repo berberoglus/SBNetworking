@@ -14,7 +14,7 @@ import Foundation
 ///
 /// Override `refresh()` to enable 401 retry. Default implementation throws `HTTPClientError.unauthorized`.
 /// Use `apikey` header name (not S-Api-Key) for Supabase compatibility.
-public protocol AuthTokenProvider: AnyObject {
+public protocol AuthTokenProvider: AnyObject, Sendable {
     var accessToken: String? { get }
     var refreshToken: String? { get }
     var apiKey: String? { get }

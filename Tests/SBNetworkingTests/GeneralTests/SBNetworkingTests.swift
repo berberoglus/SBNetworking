@@ -60,6 +60,25 @@ final class SBNetworkingTests {
     }
 
     @Test
+    func testBaseURLWithHostAndPort() throws {
+        struct LocalHostEndpoint: Endpoint {
+            typealias ResponseType = DummyResponse
+            var path: String { "/rest/v1/foo" }
+            var method: HTTPMethod { .get }
+        }
+        struct LocalClient: HttpClientProtocol {
+            var environment: HTTPClientEnvironment {
+                HTTPClientEnvironment(scheme: "http", baseURL: "127.0.0.1:54321")
+            }
+        }
+        let request = try HTTPClient(client: LocalClient()).createDefaultRequest(for: LocalHostEndpoint())
+        #expect(request.url?.scheme == "http")
+        #expect(request.url?.host == "127.0.0.1")
+        #expect(request.url?.port == 54321)
+        #expect(request.url?.path == "/rest/v1/foo")
+    }
+
+    @Test
     func testDummyPayloadEncoding() throws {
         struct DummyDummyPayloadEndpoint: Endpoint {
             typealias ResponseType = DummyResponse
@@ -72,6 +91,7 @@ final class SBNetworkingTests {
         let client = HTTPClient(client: self)
         let request = try client.createDefaultRequest(for: endpoint)
         #expect(request.httpBody != nil)
+        #expect(request.allHTTPHeaderFields?["Content-Type"] == "application/json")
         let requestBody = try #require(request.httpBody, "HTTP body should not be nil")
         let decoded = try JSONDecoder().decode(DummyPayload.self, from: requestBody)
         #expect(decoded == DummyPayload(name: "John", age: 30))

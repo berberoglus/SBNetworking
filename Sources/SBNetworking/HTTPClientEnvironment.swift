@@ -25,7 +25,7 @@ import Foundation
 /// let client = HTTPClient(client: HttpClientProtocol(environment: prodEnv))
 /// ```
 
-public struct HTTPClientEnvironment {
+public struct HTTPClientEnvironment: Sendable {
     let scheme: String
     let baseURL: String
     public init(
