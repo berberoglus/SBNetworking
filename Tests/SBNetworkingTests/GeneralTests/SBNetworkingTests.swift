@@ -233,8 +233,8 @@ final class SBNetworkingTests {
         let request = URLRequest(url: url)
         let data = Data()
         let codesAndErrors: [(Int, HTTPClientError)] = [
-            (402, .clientError(statusCode: 402)),
-            (418, .clientError(statusCode: 418)),
+            (402, .clientError(statusCode: 402, data: data)),
+            (418, .clientError(statusCode: 418, data: data)),
             (500, .serverError(statusCode: 500, data: data)),
             (599, .serverError(statusCode: 599, data: data)),
             (999, .unexpectedStatusCode)

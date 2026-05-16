@@ -36,7 +36,7 @@ public enum HTTPClientError: Error, Equatable {
     case invalidResponse
     case decodingFailed
     case unauthorized
-    case clientError(statusCode: Int)
+    case clientError(statusCode: Int, data: Data)
     case serverError(statusCode: Int, data: Data)
     case unexpectedStatusCode
     case notFound
@@ -56,7 +56,7 @@ extension HTTPClientError: LocalizedError {
             return "Failed to decode the response data"
         case .unauthorized:
             return "Authentication required (401)"
-        case .clientError(let statusCode):
+        case .clientError(let statusCode, _):
             return "Client error (HTTP \(statusCode))"
         case .serverError(let statusCode, let data):
             let dataStr = String(describing: String(data: data, encoding: .utf8))

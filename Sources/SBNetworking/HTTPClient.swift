@@ -232,7 +232,7 @@ public final class HTTPClient: HttpClientProtocol, Sendable {
         case 404:
             error = HTTPClientError.notFound
         case 400, 402, 403, 405...499:
-            error = HTTPClientError.clientError(statusCode: response.statusCode)
+            error = HTTPClientError.clientError(statusCode: response.statusCode, data: data)
         case 500...599:
             error = HTTPClientError.serverError(statusCode: response.statusCode, data: data)
         default:
