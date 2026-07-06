@@ -164,7 +164,9 @@ public final class HTTPClient: HttpClientProtocol, Sendable {
         request.httpMethod = endpoint.method.rawValue
         var allHeaders = endpoint.headerFields ?? [:]
         if let provider = authTokenProvider {
-            if let key = provider.apiKey { allHeaders["apikey"] = key }
+            if let key = provider.apiKey {
+                for name in provider.apiKeyHeaderNames { allHeaders[name] = key }
+            }
             if let token = provider.accessToken { allHeaders["Authorization"] = "Bearer \(token)" }
         }
         if endpoint.payload != nil, allHeaders["Content-Type"] == nil {

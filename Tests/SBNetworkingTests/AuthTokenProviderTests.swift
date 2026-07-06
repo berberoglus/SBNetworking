@@ -52,6 +52,24 @@ final class AuthTokenProviderTests {
     }
 
     @Test
+    func testCustomApiKeyHeaderNamesSendEveryListedHeader() throws {
+        let provider = MockAuthTokenProvider(
+            accessToken: "access_123",
+            refreshToken: nil,
+            apiKey: "publishable_key",
+            apiKeyHeaderNames: ["apikey", "s-api-key"]
+        )
+        let config = AuthTestClientConfig(authTokenProvider: provider)
+        let endpoint = DummyGetEndpoint()
+
+        let request = try TestHelpers.generateRequest(client: config, endpoint: endpoint)
+
+        #expect(request.allHTTPHeaderFields?["apikey"] == "publishable_key")
+        #expect(request.allHTTPHeaderFields?["s-api-key"] == "publishable_key")
+        #expect(request.allHTTPHeaderFields?["Authorization"] == "Bearer access_123")
+    }
+
+    @Test
     func testNilAuthTokenProviderDoesNotAddAuthHeaders() throws {
         let config = AuthTestClientConfig(authTokenProvider: nil)
         let endpoint = DummyGetEndpoint()
@@ -170,14 +188,23 @@ private final class MockAuthTokenProvider: AuthTokenProvider, @unchecked Sendabl
     var accessToken: String?
     var refreshToken: String?
     var apiKey: String?
+    let apiKeyHeaderNames: [String]
     var updateTokensCallCount = 0
     private let supportsRefresh: Bool
     private let refreshError: Error?
 
-    init(accessToken: String?, refreshToken: String?, apiKey: String?, supportsRefresh: Bool = false, refreshThrows: Error? = nil) {
+    init(
+        accessToken: String?,
+        refreshToken: String?,
+        apiKey: String?,
+        apiKeyHeaderNames: [String] = ["apikey"],
+        supportsRefresh: Bool = false,
+        refreshThrows: Error? = nil
+    ) {
         self.accessToken = accessToken
         self.refreshToken = refreshToken
         self.apiKey = apiKey
+        self.apiKeyHeaderNames = apiKeyHeaderNames
         self.supportsRefresh = supportsRefresh
         self.refreshError = refreshThrows
     }
