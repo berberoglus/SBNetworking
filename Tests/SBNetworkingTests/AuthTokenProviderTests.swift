@@ -112,6 +112,29 @@ final class AuthTokenProviderTests {
     }
 
     @Test
+    func test401WithStaleTokenRetriesWithoutRefresh() async throws {
+        // Request goes out with the STALE token; by the time its 401 lands, a
+        // sibling call has already installed the fresh one. The client must
+        // retry with the fresh token instead of burning another refresh
+        // (Supabase rotates refresh tokens — a duplicate refresh wastes one).
+        let provider = StaleThenFreshTokenProvider()
+        let config = AuthTestClientConfig(authTokenProvider: provider)
+        let endpoint = DummyStaleEndpoint()
+        let successData = "{\"resultCount\": 7}".data(using: .utf8)!
+        MockUrlProtocol.testResponseQueueByPath = [
+            "/dummy-stale": [(401, Data()), (200, successData)],
+            "dummy-stale": [(401, Data()), (200, successData)]
+        ]
+        defer { MockUrlProtocol.testResponseQueueByPath = [:] }
+
+        let client = HTTPClient(client: config)
+        let response = try await client.submitRequest(endpoint: endpoint)
+
+        #expect(response?.resultCount == 7)
+        #expect(provider.refreshCallCount == 0)
+    }
+
+    @Test
     func test401WithoutProviderThrowsUnauthorized() async throws {
         let config = AuthTestClientConfig(authTokenProvider: nil)
         let endpoint = Dummy401Endpoint()
@@ -171,6 +194,34 @@ private struct Dummy401Endpoint: Endpoint {
     typealias ResponseType = DummyResponse
     var path: String { "/dummy-401" }
     var method: HTTPMethod { .get }
+}
+
+private struct DummyStaleEndpoint: Endpoint {
+    typealias ResponseType = DummyResponse
+    var path: String { "/dummy-stale" }
+    var method: HTTPMethod { .get }
+}
+
+/// First `accessToken` read (request creation) hands out the stale token; every
+/// later read sees the fresh one — as if a sibling's refresh completed while the
+/// first request was in flight.
+private final class StaleThenFreshTokenProvider: AuthTokenProvider, @unchecked Sendable {
+    private var accessTokenReads = 0
+    private(set) var refreshCallCount = 0
+
+    var accessToken: String? {
+        accessTokenReads += 1
+        return accessTokenReads == 1 ? "stale_token" : "fresh_token"
+    }
+
+    var refreshToken: String? { "refresh" }
+    var apiKey: String? { "key" }
+
+    func updateTokens(accessToken: String, refreshToken: String) {}
+
+    func refresh() async throws {
+        refreshCallCount += 1
+    }
 }
 
 private struct AuthTestClientConfig: HttpClientProtocol {

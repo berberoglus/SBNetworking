@@ -101,7 +101,16 @@ public final class HTTPClient: HttpClientProtocol, Sendable {
 
             if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 401,
                let provider = authTokenProvider {
-                try await provider.refresh()
+                // A sibling call may have refreshed while this request was in
+                // flight. If the token this request carried is no longer the
+                // provider's current one, the fresh token is already installed —
+                // retry with it instead of burning another refresh (Supabase
+                // rotates refresh tokens; a duplicate refresh wastes one).
+                let sentAuthorization = request.value(forHTTPHeaderField: "Authorization")
+                let currentAuthorization = provider.accessToken.map { "Bearer \($0)" }
+                if currentAuthorization == nil || sentAuthorization == currentAuthorization {
+                    try await provider.refresh()
+                }
                 let newRequest = try createDefaultRequest(for: endpoint)
                 let (newData, newResponse) = try await urlSession.data(for: newRequest)
                 return try validateResponse(
