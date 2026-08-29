@@ -14,7 +14,6 @@ enum HTTPClientLoggingPolicy {
     /// Reads `SBNetworkingHTTPLogEnabled` from the main bundle Info.plist.
     /// Defaults to `false` when the key is absent (e.g. tests, extensions without plist).
     static var isHttpLoggingEnabled: Bool {
-        return true
         guard let value = Bundle.main.object(forInfoDictionaryKey: "SBNetworkingHTTPLogEnabled") else {
             return false
         }
