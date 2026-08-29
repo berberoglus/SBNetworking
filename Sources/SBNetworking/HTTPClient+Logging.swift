@@ -19,10 +19,13 @@ extension HTTPClient {
         let httpMethod = request.httpMethod ?? ""
         let urlString = request.url?.absoluteString ?? ""
         let requestString = ">>>> Request (\(httpMethod)) : \(urlString)"
-        let headersString = "Header Fields:\n\(request.allHTTPHeaderFields?.prettyPrintedJsonString ?? "")"
+        let redactedHeaders = HTTPClientLogRedactor.redactedHeaders(request.allHTTPHeaderFields)
+        let headersString = "Header Fields:\n\(redactedHeaders.prettyPrintedJsonString)"
 
         var bodyString = ""
-        if let body = request.httpBody?.prettyPrintedJsonString {
+        if request.httpBody != nil, HTTPClientLogRedactor.isBodySensitive(for: request.url) {
+            bodyString = "HTTP Body: \(HTTPClientLogRedactor.placeholder)"
+        } else if let body = request.httpBody?.prettyPrintedJsonString {
             bodyString = "HTTP Body: \n\(body)"
         }
 
@@ -35,7 +38,12 @@ extension HTTPClient {
         let statusCode = httpResponse?.statusCode ?? -1
         let urlString = response?.url?.absoluteString ?? ""
         let responseString = "<<<< Response : (\(requestMethod ?? "")) (\(statusCode)) : \(urlString)"
-        let body = data?.prettyPrintedJsonString ?? ""
+        let body: String
+        if data != nil, HTTPClientLogRedactor.isBodySensitive(for: response?.url) {
+            body = HTTPClientLogRedactor.placeholder
+        } else {
+            body = data?.prettyPrintedJsonString ?? ""
+        }
 
         Self.logger.info("\(responseString)\n\(body)")
     }
